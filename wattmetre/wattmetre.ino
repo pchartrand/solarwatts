@@ -3,7 +3,7 @@
 const int currentIn = 0; //input pin for current measurement
 const int voltIn = 1; //input pin for voltage measurement
 const int inputRelay = 6; //relay between solar panel and input
-const int outputRelay = 5; // relay between output and battery
+const int outputRelay = 7; // relay between output and battery
 
 const int currentOffset = 3;// to set the zero for current sensor
 const int delayTime = 3000; //sleep time between measurements
