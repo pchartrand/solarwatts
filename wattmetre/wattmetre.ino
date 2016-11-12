@@ -40,7 +40,11 @@ float getAmps(){
 
 String roundAndAdjust(float val, String units, int precision){
   String rv;
-  rv = String(val, precision - int(log(val)) );
+  int decimalPlaces = precision - int(log(val));
+  if(decimalPlaces < 0) {
+    decimalPlaces = 0; 
+  }
+  rv = String(val, decimalPlaces);
   return rv + units;
 }
 
