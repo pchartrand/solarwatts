@@ -7,8 +7,9 @@ const int outputRelay = 7; // relay between output and battery
 
 const int currentOffset = 3;// to set the zero for current sensor
 const int delayTime = 3000; //sleep time between measurements
-
-const float underVoltage = 10.5; //do not allow battery to go lower than (depends on battery type);
+const int sleepTime = 30000; //sleep time when voltag is low
+const float underVoltage = 10.5
+; //do not allow battery to go lower than (depends on battery type);
 const float overVoltage = 13.5;  //do not allow battery to go higher than
 const float currentScale = 14.0; //66mv/a for ACS712 30A
 const float voltageScale = 4.95; //resistor divider for measuring voltage > +5v of arduino
@@ -16,6 +17,7 @@ const float currentMax = 7.0; //charge controller sink current capacity
 
 boolean inputEnabled = false;
 boolean outputEnabled = false;
+boolean sleeping = false;
 
 LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
 
@@ -136,6 +138,22 @@ void manageOutput(boolean enable){
   }
 }
 
+void wait(float watts){
+  if(abs(watts)  > 0.1){
+    if(sleeping = true){
+      Serial.println("waking up");
+    }
+    sleeping = false;
+    delay(delayTime);  
+  }else{
+    if(sleeping = false){
+      Serial.println("Going to sleep");
+    }
+    sleeping = true;
+    delay(sleepTime);
+  }
+}
+
 void loop() {
   float voltage = getVolts();
   float current = getAmps();
@@ -161,7 +179,8 @@ void loop() {
 
   outputEnable = checkOutputVoltage(voltage);
   manageOutput(outputEnable);
-  delay(delayTime);
+  
+  wait(watts);
 
 }
 
