@@ -1,5 +1,9 @@
 #include <LiquidCrystal.h>
 
+#define LCD_BACKLIGHT_PIN      10
+#define LCD_BACKLIGHT_OFF()    digitalWrite( LCD_BACKLIGHT_PIN, LOW )
+#define LCD_BACKLIGHT_ON()     digitalWrite( LCD_BACKLIGHT_PIN, HIGH )
+
 const int currentIn = 0; //input pin for current measurement
 const int voltIn = 1; //input pin for voltage measurement
 const int inputRelay = 6; //relay between solar panel and input
@@ -7,14 +11,14 @@ const int outputRelay = 7; // relay between output and battery
 
 const int currentOffset = 3;// to set the zero for current sensor
 const int delayTime = 3000; //sleep time between measurements
-const int sleepTime = 30000; //sleep time when voltag is low
+const unsigned int sleepTime = 60000; //sleep time when voltag is low
 const float underVoltage = 10.5
 ; //do not allow battery to go lower than (depends on battery type);
 const float overVoltage = 13.5;  //do not allow battery to go higher than
 const float currentScale = 14.0; //66mv/a for ACS712 30A
 const float voltageScale = 4.95; //resistor divider for measuring voltage > +5v of arduino
 const float currentMax = 7.0; //charge controller sink current capacity
-
+const float minPower = 0.5; //minimal power required to wake up the arduino
 boolean inputEnabled = false;
 boolean outputEnabled = false;
 boolean sleeping = false;
@@ -28,6 +32,8 @@ void setup() {
   Serial.println("Starting\n");
   lcd.begin(16, 2);
   lcd.print("Bonjour\n");
+  digitalWrite( LCD_BACKLIGHT_PIN, HIGH );
+  pinMode( LCD_BACKLIGHT_PIN, OUTPUT ); 
 }
 
 float getVolts(){
@@ -139,15 +145,19 @@ void manageOutput(boolean enable){
 }
 
 void wait(float watts){
-  if(abs(watts)  > 0.1){
-    if(sleeping = true){
+  if(abs(watts)  > minPower){
+    delay(delayTime);  
+    if(sleeping == true){
       Serial.println("waking up");
+      LCD_BACKLIGHT_ON();
+      lcd.display();
     }
     sleeping = false;
-    delay(delayTime);  
   }else{
-    if(sleeping = false){
+    if(sleeping == false){
       Serial.println("Going to sleep");
+      lcd.noDisplay();
+      LCD_BACKLIGHT_OFF();
     }
     sleeping = true;
     delay(sleepTime);
