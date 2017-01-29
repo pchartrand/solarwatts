@@ -1,49 +1,75 @@
 #include <LiquidCrystal.h>
 
-#define LCD_BACKLIGHT_PIN      10
-#define LCD_BACKLIGHT_OFF()    digitalWrite( LCD_BACKLIGHT_PIN, LOW )
-#define LCD_BACKLIGHT_ON()     digitalWrite( LCD_BACKLIGHT_PIN, HIGH )
+#define LCD_D7 2
+#define LCD_D6 3
+#define LCD_D5 4
+#define LCD_D4 5
+#define LCD_E 11
+#define LCD_RS 12
+#define LCD_BACKLIGHT 10
+#define LCD_BACKLIGHT_OFF()    digitalWrite( LCD_BACKLIGHT, LOW )
+#define LCD_BACKLIGHT_ON()     digitalWrite( LCD_BACKLIGHT, HIGH )
 
-const int currentIn = 0; //input pin for current measurement
-const int voltIn = 1; //input pin for voltage measurement
-const int inputRelay = 6; //relay between solar panel and input
-const int outputRelay = 7; // relay between output and battery
+#define CURRENT_SENSE 0        // input pin for current measurement
+#define OUTPUT_VOLTAGE_SENSE 1 // input pin for output voltage measurement
+#define INPUT_VOLTAGE_SENSE 2  // input pin for input voltage measurement
 
-const int currentOffset = 3;// to set the zero for current sensor
-const int delayTime = 3000; //sleep time between measurements
-const unsigned int sleepTime = 60000; //sleep time when voltag is low
-const float underVoltage = 10.5
-; //do not allow battery to go lower than (depends on battery type);
-const float overVoltage = 13.5;  //do not allow battery to go higher than
-const float currentScale = 14.0; //66mv/a for ACS712 30A
-const float voltageScale = 4.95; //resistor divider for measuring voltage > +5v of arduino
-const float currentMax = 7.0; //charge controller sink current capacity
-const float minPower = 0.5; //minimal power required to wake up the arduino
-boolean inputEnabled = false;
-boolean outputEnabled = false;
-boolean sleeping = false;
+#define ZERO_CURRENT_OFFSET 0  // to set the zero for current sensor
 
-LiquidCrystal lcd(12, 11, 5, 4, 3, 2);
+#define RELAY_OUT_1 6  // relay between solar panel 1 and input
+#define RELAY_OUT_2 7  // relay between solar panel 2 and input
+#define RELAY_1_ON()   digitalWrite(RELAY_OUT_1, HIGH)
+#define RELAY_2_ON()   digitalWrite(RELAY_OUT_2, HIGH)
+#define RELAY_1_OFF()  digitalWrite(RELAY_OUT_1, LOW)
+#define RELAY_2_OFF()  digitalWrite(RELAY_OUT_2, LOW)
+
+#define SHORT_WAIT_TIME   3000 // wait time for main loop when isCurrentlyCharging
+#define LONG_WAIT_TIME   30000 // wait time for main loop when not isCurrentlyCharging
+
+const float MINIMUM_INPUT_VOLTAGE = 10.5;   // minimal input voltage required to attempt to charge
+const float DESIRED_BATTERY_VOLTAGE = 14.5; // stop isCurrentlyCharging when this output voltage is attained
+const float CURRENT_SCALE = 14.0;           // current to voltage convertion rate 66mv/a for ACS712 30A
+const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
+const float OUTPUT_VOLTAGE_SCALE = 4.95;    // resistor divider for measuring output voltage relative to +5v
+const float MAX_CURRENT = 10.0;             // charge controller or battery sink current capacity
+
+boolean sendMeasurements = true;            // report voltage and current measurements as well as watts produced on serial port
+boolean isCurrentlyCharging = false;
+
+LiquidCrystal lcd(LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
 void setup() {
-  pinMode(inputRelay, OUTPUT);
-  pinMode(outputRelay, OUTPUT);
+  pinMode(LCD_BACKLIGHT, OUTPUT); 
+  pinMode(RELAY_OUT_1, OUTPUT);
+  pinMode(RELAY_OUT_2, OUTPUT);
+
   Serial.begin(9600);
-  Serial.println("Starting\n");
+  Serial.println(F("Starting"));
+
+  digitalWrite(LCD_BACKLIGHT, HIGH);
+  digitalWrite(RELAY_OUT_1, LOW);
+  digitalWrite(RELAY_OUT_2, LOW);
+
   lcd.begin(16, 2);
-  lcd.print("Bonjour\n");
-  digitalWrite( LCD_BACKLIGHT_PIN, HIGH );
-  pinMode( LCD_BACKLIGHT_PIN, OUTPUT ); 
 }
 
-float getVolts(){
-  int voltReading = analogRead(voltIn);
-  return 5 * voltageScale * (voltReading+1) / 1024.0;
+float measureInputVoltage(){
+  int voltReading = analogRead(INPUT_VOLTAGE_SENSE);
+  return 5 * INPUT_VOLTAGE_SCALE * (voltReading+1) / 1024.0;
 }
 
-float getAmps(){
-  int currentReading = analogRead(currentIn);
-  return (currentReading - 512 + currentOffset) / currentScale;
+float measureOutputVoltage(){
+  int voltReading = analogRead(OUTPUT_VOLTAGE_SENSE);
+  return 5 * OUTPUT_VOLTAGE_SCALE * (voltReading+1) / 1024.0;
+}
+
+float measureCurrent(){
+  int currentReading = analogRead(CURRENT_SENSE);
+  return (currentReading - 512 + ZERO_CURRENT_OFFSET) / CURRENT_SCALE;
+}
+
+float calculatePower(float current, float voltage){
+  return current * voltage;
 }
 
 String roundAndAdjust(float val, String units, int precision){
@@ -56,17 +82,19 @@ String roundAndAdjust(float val, String units, int precision){
   return rv + units;
 }
 
-void sendValues(float current, float voltage, float watts){
+void sendMeasurementValues(float inputVoltage, float current, float outputVoltage, float watts){
+  Serial.print(inputVoltage);
+  Serial.println('V');
   Serial.print(current);
   Serial.println('A');
-  Serial.print(voltage);
+  Serial.print(outputVoltage);
   Serial.println('V');
   Serial.print(watts);
   Serial.println('W');
   Serial.println();
 }
 
-void displayVoltage(float voltage){
+void displayInputVoltage(float voltage){
   lcd.setCursor(0, 0);
   lcd.print(roundAndAdjust(voltage, "V", 3));
 }
@@ -76,121 +104,96 @@ void displayCurrent(float current){
   lcd.print(roundAndAdjust(current, "A", 2));
 }
 
-void displayPower(float watts){
+void displayOutputVoltage(float voltage){
   lcd.setCursor(0, 1);
+  lcd.print(roundAndAdjust(voltage, "V", 3));
+}
+
+void displayPower(float watts){
+  lcd.setCursor(8, 1);
   lcd.print(roundAndAdjust(watts, "W", 2));
 }
 
-boolean checkInputVoltage(float voltage){
-  boolean voltageOk = true;
-  String lcdPrompt = "   ";
-  lcd.setCursor(8, 1);
-  if (voltage > overVoltage){
-    Serial.println("voltage too high");
-    lcdPrompt = "Vi+";
-    voltageOk = false;
-  }
-  lcd.print(lcdPrompt);
-  return voltageOk;
+boolean openRelays(){
+    Serial.println("Enabling inputs");
+    RELAY_1_ON();
+    RELAY_2_ON();
+    return true;
 }
 
-boolean checkCurrent(float current){
-  boolean currentOk = true;
-  String lcdPrompt = "   ";
-  lcd.setCursor(11, 1);
-  if (current > currentMax){
-    Serial.println("too much current");
-    lcdPrompt = "I+";
-    currentOk = false;
-  }
-  lcd.print(lcdPrompt);
-  return currentOk;
+boolean closeRelays(){
+    Serial.println("Disabling inputs");
+    RELAY_1_OFF();
+    RELAY_2_OFF();
+    return false;
 }
 
-boolean checkOutputVoltage(float voltage){
-   boolean voltageOk = true;
-  String lcdPrompt = "   ";
-  lcd.setCursor(13, 1);
-  if (voltage < underVoltage){
-    voltageOk = false;
-    Serial.println("voltage too low");
-    lcdPrompt = "Vo-";
+void displayMeasurements(float inputVoltage, float current, float outputVoltage, float watts){
+  if (sendMeasurements){
+    sendMeasurementValues(inputVoltage, current, outputVoltage, watts);
   }
-  lcd.print(lcdPrompt);
-  return voltageOk;
+  lcd.clear();
+  displayInputVoltage(inputVoltage);
+  displayOutputVoltage(outputVoltage);
+  displayCurrent(current);
+  displayPower(watts);
 }
 
-void manageInput(boolean enable){
-  if (!inputEnabled && enable){
-    Serial.println("Enabling input");
-    digitalWrite(inputRelay, HIGH);
-    inputEnabled = true;
-  }else if (inputEnabled && !enable){
-    Serial.println("Disabling input");
-    digitalWrite(inputRelay, LOW);
-    inputEnabled = false;
-  }
-}
-
-void manageOutput(boolean enable){
-  if (!outputEnabled && enable){
-    Serial.println("Enabling output");
-    digitalWrite(outputRelay, HIGH);
-    outputEnabled = true;
-  }else if (outputEnabled && !enable){
-    Serial.println("Disabling output");
-    digitalWrite(outputRelay, LOW);
-    outputEnabled = false;
-  }
-}
-
-void wait(float watts){
-  if(abs(watts)  > minPower){
-    delay(delayTime);  
-    if(sleeping == true){
-      Serial.println("waking up");
-      LCD_BACKLIGHT_ON();
-      lcd.display();
-    }
-    sleeping = false;
-  }else{
-    if(sleeping == false){
-      Serial.println("Going to sleep");
-      lcd.noDisplay();
-      LCD_BACKLIGHT_OFF();
-    }
-    sleeping = true;
-    delay(sleepTime);
-  }
+void measure(float &inputVoltage, float &current, float &outputVoltage, float &watts){
+  inputVoltage = measureInputVoltage();
+  outputVoltage = measureOutputVoltage();
+  current = measureCurrent();
+  watts = calculatePower(current, outputVoltage);
 }
 
 void loop() {
-  float voltage = getVolts();
-  float current = getAmps();
-  float watts = current * voltage;
-  boolean vin;
-  boolean iin;
-  boolean inputEnable;
-  boolean outputEnable;
-  sendValues(current, voltage, watts);
-  lcd.clear();
-  displayVoltage(voltage);
-  displayCurrent(current);
-  displayPower(watts);
-  vin = checkInputVoltage(voltage);
-  iin = checkCurrent(current);
-  if ((vin == false) || (iin == false)){
-    inputEnable = false;
-  }else{
-    inputEnable = true;
-  }
-
-  manageInput(inputEnable);  
-
-  outputEnable = checkOutputVoltage(voltage);
-  manageOutput(outputEnable);
-  
-  wait(watts);
-
+    float inputVoltage;
+    float outputVoltage;
+    float current;
+    float watts;
+    int sleepTime;
+    
+    measure(inputVoltage, current, outputVoltage, watts);
+    displayMeasurements(inputVoltage, current, outputVoltage, watts);
+    
+    if (outputVoltage < DESIRED_BATTERY_VOLTAGE){
+      if (isCurrentlyCharging){
+        Serial.println(F("isCurrentlyCharging"));
+      }else{
+        Serial.println(F("battery needs isCurrentlyCharging"));
+      }
+      if ((inputVoltage > MINIMUM_INPUT_VOLTAGE) && (inputVoltage > outputVoltage)) {
+          if (!isCurrentlyCharging){
+            isCurrentlyCharging = openRelays();
+            measure(inputVoltage, current, outputVoltage, watts);
+            displayMeasurements(inputVoltage, current, outputVoltage, watts);
+          }
+          if ((current >  MAX_CURRENT)){
+            Serial.println(F("current too high"));
+            isCurrentlyCharging = closeRelays();
+            measure(inputVoltage, current, outputVoltage, watts);
+            displayMeasurements(inputVoltage, current, outputVoltage, watts);
+          }
+      }else{
+          Serial.println(F("not enough voltage to charge"));
+          if (isCurrentlyCharging){
+            isCurrentlyCharging = closeRelays();
+          }
+      }
+    } else {
+      Serial.println(F("battery charged"));
+      if (isCurrentlyCharging){
+        isCurrentlyCharging = closeRelays();
+      }
+    }
+    if(isCurrentlyCharging){
+      LCD_BACKLIGHT_ON();
+      sleepTime = SHORT_WAIT_TIME;
+    }else{
+      LCD_BACKLIGHT_OFF();
+      sleepTime = LONG_WAIT_TIME;
+    }
+    
+  delay(sleepTime);
 }
 
