@@ -31,10 +31,11 @@ const float DESIRED_BATTERY_VOLTAGE = 14.5; // stop isCurrentlyCharging when thi
 const float CURRENT_SCALE = 14.0;           // current to voltage convertion rate 66mv/a for ACS712 30A
 const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
 const float OUTPUT_VOLTAGE_SCALE = 4.95;    // resistor divider for measuring output voltage relative to +5v
-const float MAX_CURRENT = 10.0;             // charge controller or battery sink current capacity
+const float MAX_CURRENT = 10.0;             // total charge controller or battery sink current capacity
 
 boolean sendMeasurements = true;            // report voltage and current measurements as well as watts produced on serial port
 boolean isCurrentlyCharging = false;
+boolean extraRelayOn = false;
 
 LiquidCrystal lcd(LCD_RS, LCD_E, LCD_D4, LCD_D5, LCD_D6, LCD_D7);
 
@@ -82,6 +83,14 @@ String roundAndAdjust(float val, String units, int precision){
   return rv + units;
 }
 
+void measure(float &inputVoltage, float &current, float &outputVoltage, float &watts){
+  delay(100);
+  inputVoltage = measureInputVoltage();
+  outputVoltage = measureOutputVoltage();
+  current = measureCurrent();
+  watts = calculatePower(current, outputVoltage);
+}
+
 void sendMeasurementValues(float inputVoltage, float current, float outputVoltage, float watts){
   Serial.print(inputVoltage);
   Serial.println('V');
@@ -118,6 +127,7 @@ boolean openRelays(){
     Serial.println("Enabling inputs");
     RELAY_1_ON();
     RELAY_2_ON();
+    extraRelayOn = true;
     return true;
 }
 
@@ -125,7 +135,24 @@ boolean closeRelays(){
     Serial.println("Disabling inputs");
     RELAY_1_OFF();
     RELAY_2_OFF();
+    extraRelayOn = false;
     return false;
+}
+
+void closeExtraRelay(){
+    if (extraRelayOn){
+      Serial.println("Closing extra relay");
+      RELAY_2_OFF();
+      extraRelayOn = false;
+    }
+}
+
+void openExtraRelay(){
+    if (!extraRelayOn){
+      Serial.println("Opening extra relay");
+      RELAY_2_ON();
+      extraRelayOn = true;
+    }
 }
 
 void displayMeasurements(float inputVoltage, float current, float outputVoltage, float watts){
@@ -137,13 +164,6 @@ void displayMeasurements(float inputVoltage, float current, float outputVoltage,
   displayOutputVoltage(outputVoltage);
   displayCurrent(current);
   displayPower(watts);
-}
-
-void measure(float &inputVoltage, float &current, float &outputVoltage, float &watts){
-  inputVoltage = measureInputVoltage();
-  outputVoltage = measureOutputVoltage();
-  current = measureCurrent();
-  watts = calculatePower(current, outputVoltage);
 }
 
 void loop() {
@@ -158,9 +178,9 @@ void loop() {
     
     if (outputVoltage < DESIRED_BATTERY_VOLTAGE){
       if (isCurrentlyCharging){
-        Serial.println(F("isCurrentlyCharging"));
+        Serial.println(F("charging"));
       }else{
-        Serial.println(F("battery needs isCurrentlyCharging"));
+        Serial.println(F("battery needs charging"));
       }
       if ((inputVoltage > MINIMUM_INPUT_VOLTAGE) && (inputVoltage > outputVoltage)) {
           if (!isCurrentlyCharging){
@@ -169,11 +189,21 @@ void loop() {
             displayMeasurements(inputVoltage, current, outputVoltage, watts);
           }
           if ((current >  MAX_CURRENT)){
-            Serial.println(F("current too high"));
+            Serial.println(F("current is too high"));
             isCurrentlyCharging = closeRelays();
             measure(inputVoltage, current, outputVoltage, watts);
             displayMeasurements(inputVoltage, current, outputVoltage, watts);
-          }
+          }else if ((current >  (MAX_CURRENT / 2))){
+            Serial.println(F("current is good"));
+            closeExtraRelay();
+            measure(inputVoltage, current, outputVoltage, watts);
+            displayMeasurements(inputVoltage, current, outputVoltage, watts);
+          }else{
+            Serial.println(F("current is low"));
+            openExtraRelay();
+            measure(inputVoltage, current, outputVoltage, watts);
+            displayMeasurements(inputVoltage, current, outputVoltage, watts);
+          }   
       }else{
           Serial.println(F("not enough voltage to charge"));
           if (isCurrentlyCharging){
