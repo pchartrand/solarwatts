@@ -31,7 +31,9 @@ const float DESIRED_BATTERY_VOLTAGE = 14.5; // stop isCurrentlyCharging when thi
 const float CURRENT_SCALE = 14.0;           // current to voltage convertion rate 66mv/a for ACS712 30A
 const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
 const float OUTPUT_VOLTAGE_SCALE = 4.95;    // resistor divider for measuring output voltage relative to +5v
-const float MAX_CURRENT = 10.0;             // total charge controller or battery sink current capacity
+const float MAX_CURRENT = 14.0;             // total charge controller or battery sink current capacity
+const float LOW_CURRENT_RATIO = 0.7;        // 70% of half max current 4.9 A should open second relay
+const float HIGH_CURRENT_RATIO = 1.3;       // 130% of half max current 9.1A should close second relay
 
 boolean sendMeasurements = true;            // report voltage and current measurements as well as watts produced on serial port
 boolean isCurrentlyCharging = false;
@@ -182,7 +184,7 @@ void loop() {
       }else{
         Serial.println(F("battery needs charging"));
       }
-      if ((inputVoltage > MINIMUM_INPUT_VOLTAGE) && (inputVoltage > outputVoltage)) {
+      if (inputVoltage > MINIMUM_INPUT_VOLTAGE) {
           if (!isCurrentlyCharging){
             isCurrentlyCharging = openRelays();
             measure(inputVoltage, current, outputVoltage, watts);
@@ -193,11 +195,13 @@ void loop() {
             isCurrentlyCharging = closeRelays();
             measure(inputVoltage, current, outputVoltage, watts);
             displayMeasurements(inputVoltage, current, outputVoltage, watts);
-          }else if ((current >  (MAX_CURRENT / 2))){
-            Serial.println(F("current is good"));
+          }else if ((current >  HIGH_CURRENT_RATIO * (MAX_CURRENT / 2))){
+            Serial.println(F("current is high"));
             closeExtraRelay();
             measure(inputVoltage, current, outputVoltage, watts);
             displayMeasurements(inputVoltage, current, outputVoltage, watts);
+          }else if ((current >  LOW_CURRENT_RATIO * (MAX_CURRENT / 2))){
+            Serial.println(F("current is good"));
           }else{
             Serial.println(F("current is low"));
             openExtraRelay();
