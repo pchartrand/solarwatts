@@ -24,14 +24,14 @@
 #define RELAY_2_OFF()  digitalWrite(RELAY_OUT_2, LOW)
 
 #define SHORT_WAIT_TIME   3000 // wait time for main loop when isCurrentlyCharging
-#define LONG_WAIT_TIME   30000 // wait time for main loop when not isCurrentlyCharging
+#define LONG_WAIT_TIME   90000 // wait time for main loop when not isCurrentlyCharging
 
-const float MINIMUM_INPUT_VOLTAGE = 10.5;   // minimal input voltage required to attempt to charge
-const float DESIRED_BATTERY_VOLTAGE = 14.5; // stop isCurrentlyCharging when this output voltage is attained
+const float MINIMUM_INPUT_VOLTAGE = 11.0;   // minimal input voltage required to attempt to charge
+const float MAXIMUM_BATTERY_VOLTAGE = 14.5; // stop charging when this output voltage is attained
 const float CURRENT_SCALE = 14.0;           // current to voltage convertion rate 66mv/a for ACS712 30A
 const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
 const float OUTPUT_VOLTAGE_SCALE = 4.95;    // resistor divider for measuring output voltage relative to +5v
-const float MAX_CURRENT = 14.0;             // total charge controller or battery sink current capacity
+const float MAX_CURRENT = 20.0;             // total charge controller or battery sink current capacity
 const float LOW_CURRENT_RATIO = 0.7;        // 70% of half max current 4.9 A should open second relay
 const float HIGH_CURRENT_RATIO = 1.3;       // 130% of half max current 9.1A should close second relay
 
@@ -178,7 +178,7 @@ void loop() {
     measure(inputVoltage, current, outputVoltage, watts);
     displayMeasurements(inputVoltage, current, outputVoltage, watts);
     
-    if (outputVoltage < DESIRED_BATTERY_VOLTAGE){
+    if (outputVoltage < MAXIMUM_BATTERY_VOLTAGE){
       if (isCurrentlyCharging){
         Serial.println(F("charging"));
       }else{
