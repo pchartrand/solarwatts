@@ -26,7 +26,7 @@
 #define SHORT_WAIT_TIME   3000 // wait time for main loop when isCurrentlyCharging
 #define LONG_WAIT_TIME   90000 // wait time for main loop when not isCurrentlyCharging
 
-const float MINIMUM_INPUT_VOLTAGE = 11.0;   // minimal input voltage required to attempt to charge
+const float MINIMUM_INPUT_VOLTAGE = 10.5;   // minimal input voltage required to attempt to charge
 const float MAXIMUM_BATTERY_VOLTAGE = 14.5; // stop charging when this output voltage is attained
 const float CURRENT_SCALE = 14.0;           // current to voltage convertion rate 66mv/a for ACS712 30A
 const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
