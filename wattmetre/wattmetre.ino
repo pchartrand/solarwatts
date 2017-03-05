@@ -28,10 +28,12 @@
 
 const float MINIMUM_INPUT_VOLTAGE = 10.5;   // minimal input voltage required to attempt to charge
 const float MAXIMUM_BATTERY_VOLTAGE = 14.5; // stop charging when this output voltage is attained
+const float MINIMUM_VOLTAGE_DIFFERENCE = 4.0;// minumum voltage difference between input and output
 const float CURRENT_SCALE = 14.0;           // current to voltage convertion rate 66mv/a for ACS712 30A
 const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
 const float OUTPUT_VOLTAGE_SCALE = 4.95;    // resistor divider for measuring output voltage relative to +5v
 const float MAX_CURRENT = 20.0;             // total charge controller or battery sink current capacity
+const float MIN_CURRENT = 0.2;              // 1% of max current
 const float LOW_CURRENT_RATIO = 0.7;        // 70% of half max current 4.9 A should open second relay
 const float HIGH_CURRENT_RATIO = 1.3;       // 130% of half max current 9.1A should close second relay
 
@@ -161,10 +163,13 @@ void displayMeasurements(float inputVoltage, float current, float outputVoltage,
   if (sendMeasurements){
     sendMeasurementValues(inputVoltage, current, outputVoltage, watts);
   }
-  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print(F("               "));
   displayInputVoltage(inputVoltage);
-  displayOutputVoltage(outputVoltage);
   displayCurrent(current);
+  lcd.setCursor(0, 1);
+  lcd.print(F("               "));
+  displayOutputVoltage(outputVoltage);
   displayPower(watts);
 }
 
@@ -177,7 +182,6 @@ void loop() {
     
     measure(inputVoltage, current, outputVoltage, watts);
     displayMeasurements(inputVoltage, current, outputVoltage, watts);
-    
     if (outputVoltage < MAXIMUM_BATTERY_VOLTAGE){
       if (isCurrentlyCharging){
         Serial.println(F("charging"));
@@ -186,9 +190,14 @@ void loop() {
       }
       if (inputVoltage > MINIMUM_INPUT_VOLTAGE) {
           if (!isCurrentlyCharging){
-            isCurrentlyCharging = openRelays();
-            measure(inputVoltage, current, outputVoltage, watts);
-            displayMeasurements(inputVoltage, current, outputVoltage, watts);
+            if (inputVoltage > outputVoltage + MINIMUM_VOLTAGE_DIFFERENCE){
+              Serial.println(F("input voltage seems ok before load"));
+              isCurrentlyCharging = openRelays();
+              measure(inputVoltage, current, outputVoltage, watts);
+              displayMeasurements(inputVoltage, current, outputVoltage, watts);
+            }else{
+              Serial.println(F("input voltage is too low"));
+            }
           }
           if ((current >  MAX_CURRENT)){
             Serial.println(F("current is too high"));
@@ -202,12 +211,22 @@ void loop() {
             displayMeasurements(inputVoltage, current, outputVoltage, watts);
           }else if ((current >  LOW_CURRENT_RATIO * (MAX_CURRENT / 2))){
             Serial.println(F("current is good"));
-          }else{
+          }else if (current > MIN_CURRENT) {
             Serial.println(F("current is low"));
             openExtraRelay();
             measure(inputVoltage, current, outputVoltage, watts);
             displayMeasurements(inputVoltage, current, outputVoltage, watts);
-          }   
+          }else if (current > 0.0){
+            Serial.println(F("not enough current to charge"));
+            if (isCurrentlyCharging){
+              isCurrentlyCharging = closeRelays();
+            }
+          } else{
+            Serial.println(F("we are draining current"));
+            if (isCurrentlyCharging){
+              isCurrentlyCharging = closeRelays();
+            }
+          }  
       }else{
           Serial.println(F("not enough voltage to charge"));
           if (isCurrentlyCharging){
@@ -227,7 +246,6 @@ void loop() {
       LCD_BACKLIGHT_OFF();
       sleepTime = LONG_WAIT_TIME;
     }
-    
   delay(sleepTime);
 }
 
