@@ -88,7 +88,7 @@ String roundAndAdjust(float val, String units, int precision){
   return rv + units;
 }
 
-void measure(int voltageSense, int currentSense, float outputVoltage, float &inputVoltage, float &outputCurrent){
+void measure(int voltageSense, int currentSense, float &inputVoltage, float &outputCurrent){
   delay(100);
   inputVoltage = measureinputVoltage(voltageSense);
   outputCurrent = measureCurrent(currentSense);
@@ -103,18 +103,23 @@ void sendMeasurementValues(
   float outputPowerOne,  
   float outputPowerTwo
   ){
+  Serial.println("Panel 1");
   Serial.print(inputVoltageOne);
   Serial.println('V');
   Serial.print(outputCurrentOne);
   Serial.println('A');
   Serial.print(outputPowerOne);
   Serial.println('W');
+  
+  Serial.println("Panel 2");
   Serial.print(inputVoltageTwo);
   Serial.println('V');
   Serial.print(outputCurrentTwo);
   Serial.println('A');
   Serial.print(outputPowerTwo);
   Serial.println('W');
+  
+  Serial.println("Battery");
   Serial.print(outputVoltage);
   Serial.println('V');
   Serial.println();
@@ -122,7 +127,7 @@ void sendMeasurementValues(
 
 void displayVoltage(float voltage, int offset){
   lcd.setCursor(offset, 0);
-  lcd.print(roundAndAdjust(voltage, "V", 3));
+  lcd.print(roundAndAdjust(voltage, "V", 2));
 }
 
 void displayPower(float outputPower, int offset){
@@ -130,11 +135,16 @@ void displayPower(float outputPower, int offset){
   lcd.print(roundAndAdjust(outputPower, "W", 2));
 }
 
+void displayCurrent(float outputCurrent, int offset){
+  lcd.setCursor(offset, 1);
+  lcd.print(roundAndAdjust(outputCurrent, "A", 1));
+}
+
 void displayMeasurements(
   float outputVoltage, 
   float inputVoltageOne, 
-  float outputPowerOne, 
   float outputCurrentOne,
+  float outputPowerOne, 
   float inputVoltageTwo, 
   float outputCurrentTwo,
   float outputPowerTwo
@@ -149,13 +159,13 @@ void displayMeasurements(
   displayVoltage(outputVoltage, 10);
   lcd.setCursor(0, 1);
   lcd.print(F("               "));
-  displayPower(outputPowerOne, 0);
-  displayPower(outputPowerOne, 5);
-  displayPower((outputPowerOne + outputPowerTwo), 10);
+  displayCurrent(outputCurrentOne, 0);
+  displayCurrent(outputCurrentTwo, 5);
+  displayCurrent((outputCurrentOne + outputCurrentTwo), 10);
 }
 
-int manageBacklight(){
-    int sleepTime;
+long manageBacklight(){
+    long sleepTime;
     if((relayOneOn) ||(relayTwoOn)){
       LCD_BACKLIGHT_ON();
       sleepTime = SHORT_WAIT_TIME;
@@ -175,12 +185,12 @@ boolean tryInput(
   ){
   boolean relayOn = false;
   if (inputVoltage > outputVoltage + MINIMUM_VOLTAGE_DIFFERENCE){
-    Serial.println(F("input voltage seems ok before load"));
+    Serial.println(F("  input voltage seems ok before load"));
     digitalWrite(relayOut, HIGH);
     relayOn = true;
-    measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, outputVoltage, inputVoltage, outputCurrent);
+    measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, inputVoltage, outputCurrent);
   }else{
-    Serial.println(F("input voltage is too low"));
+    Serial.println(F("  input voltage is too low"));
   }
   return relayOn;
 }
@@ -193,16 +203,16 @@ void loop() {
     float inputVoltageTwo;
     float outputCurrentTwo;
     float outputPowerTwo;
-    int sleepTime;
+    long sleepTime;
     outputVoltage = measureOutputVoltage();
     
-    measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, outputVoltage, inputVoltageOne, outputCurrentOne);
+    measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, inputVoltageOne, outputCurrentOne);
     outputPowerOne = calculatePower(outputCurrentOne, (inputVoltageOne - outputVoltage));
 
-    measure(INPUT_VOLTAGE_SENSE_TWO, CURRENT_SENSE_TWO, outputVoltage, inputVoltageTwo, outputCurrentTwo);
+    measure(INPUT_VOLTAGE_SENSE_TWO, CURRENT_SENSE_TWO, inputVoltageTwo, outputCurrentTwo);
     outputPowerTwo = calculatePower(outputCurrentTwo, (inputVoltageTwo - outputVoltage));
-
-    displayMeasurements(inputVoltageOne, inputVoltageTwo, outputVoltage, outputPowerOne, outputPowerTwo, outputCurrentOne, outputCurrentTwo);
+    Serial.println(F("Before testing"));
+    displayMeasurements(outputVoltage, inputVoltageOne, outputCurrentOne, outputPowerOne, inputVoltageTwo, outputCurrentTwo, outputPowerTwo);
     if (outputVoltage < MAXIMUM_BATTERY_VOLTAGE){
       if (relayOneOn || relayTwoOn){
         Serial.println(F("charging"));
@@ -211,29 +221,32 @@ void loop() {
       }
       
       if (inputVoltageOne > MINIMUM_INPUT_VOLTAGE) {
+        Serial.println(F("Checking panel one"));
           if (!relayOneOn){
             relayOneOn = tryInput(RELAY_OUT_ONE, outputVoltage, inputVoltageOne, outputCurrentOne);
             outputPowerOne = calculatePower(outputCurrentOne, (inputVoltageOne - outputVoltage));
           }
           if ((outputCurrentOne >  MAX_CURRENT)){
-            Serial.println(F("output current from panel one is too high"));
+            Serial.println(F("  output current from panel one is too high"));
             RELAY_ONE_OFF();
             relayOneOn = false;
-            measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, outputVoltage, inputVoltageOne, outputCurrentOne);
+            measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, inputVoltageOne, outputCurrentOne);
             outputPowerOne = calculatePower(outputCurrentOne, (inputVoltageOne - outputVoltage));
           }else if (outputCurrentOne > MIN_CURRENT) {
-            Serial.println(F("output current from panel one is ok"));
-            measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, outputVoltage, inputVoltageOne, outputCurrentOne);
+            Serial.println(F("  output current from panel one is ok"));
+            measure(INPUT_VOLTAGE_SENSE_ONE, CURRENT_SENSE_ONE, inputVoltageOne, outputCurrentOne);
             outputPowerOne = calculatePower(outputCurrentOne, (inputVoltageOne - outputVoltage));
           } else{
-            Serial.println(F("output current from panel one is to low"));
+            Serial.print(F("  output current from panel one is too low: "));
+            Serial.println(outputCurrentOne);
             if (relayOneOn){
               RELAY_ONE_OFF();
               relayOneOn = false;
             }
           }  
       }else{
-          Serial.println(F("not enough voltage from panel one to charge"));
+          Serial.print(F("not enough voltage from panel one to charge: "));
+          Serial.println(inputVoltageOne);
           if (relayOneOn){
               RELAY_ONE_OFF();
               relayOneOn = false;
@@ -241,35 +254,39 @@ void loop() {
       }
 
       if (inputVoltageTwo > MINIMUM_INPUT_VOLTAGE) {
+        Serial.println(F("Checking panel two"));
           if (!relayTwoOn){
             relayTwoOn = tryInput(RELAY_OUT_TWO, outputVoltage, inputVoltageTwo, outputCurrentTwo);
             outputPowerTwo = calculatePower(outputCurrentTwo, (inputVoltageTwo - outputVoltage));
           }
           if ((outputCurrentTwo >  MAX_CURRENT)){
-            Serial.println(F("output current from panel two is too high"));
+            Serial.println(F("  output current from panel two is too high"));
             RELAY_TWO_OFF();
             relayTwoOn = false;
-            measure(INPUT_VOLTAGE_SENSE_TWO, CURRENT_SENSE_TWO, outputVoltage, inputVoltageTwo, outputCurrentTwo);
+            measure(INPUT_VOLTAGE_SENSE_TWO, CURRENT_SENSE_TWO, inputVoltageTwo, outputCurrentTwo);
             outputPowerTwo = calculatePower(outputCurrentTwo, (inputVoltageTwo - outputVoltage));
           }else if (outputCurrentOne > MIN_CURRENT) {
-            Serial.println(F("output current from panel two is ok"));
-            measure(INPUT_VOLTAGE_SENSE_TWO, CURRENT_SENSE_TWO, outputVoltage, inputVoltageOne, outputCurrentOne);
+            Serial.println(F("  output current from panel two is ok"));
+            measure(INPUT_VOLTAGE_SENSE_TWO, CURRENT_SENSE_TWO, inputVoltageTwo, outputCurrentTwo);
             outputPowerTwo = calculatePower(outputCurrentTwo, (inputVoltageTwo - outputVoltage));
           } else{
-            Serial.println(F("output current from panel two is to low"));
+            Serial.print(F("  output current from panel two is too low: "));
+            Serial.println(outputCurrentTwo);
             if (relayTwoOn){
               RELAY_TWO_OFF();
               relayTwoOn = false;
             }
           }  
       }else{
-          Serial.println(F("not enough voltage from panel two to charge"));
+          Serial.print(F("not enough voltage from panel two to charge: "));
+          Serial.println(inputVoltageTwo);
           if (relayTwoOn){
             RELAY_TWO_OFF();
             relayTwoOn = false;
           }
       }
-      displayMeasurements(inputVoltageOne, inputVoltageTwo, outputVoltage, outputPowerOne, outputPowerTwo, outputCurrentOne, outputCurrentTwo);
+      Serial.println(F("After testing"));
+      displayMeasurements(outputVoltage, inputVoltageOne, outputCurrentOne, outputPowerOne, inputVoltageTwo, outputCurrentTwo, outputPowerTwo);
       
     } else {
       Serial.println(F("battery charged"));
