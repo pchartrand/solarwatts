@@ -29,12 +29,14 @@
 #define SHORT_WAIT_TIME   3000 // wait time for main loop when isCurrentlyCharging
 #define LONG_WAIT_TIME   90000 // wait time for main loop when not isCurrentlyCharging
 
-const float MINIMUM_INPUT_VOLTAGE = 10.5;   // minimal input voltage required to attempt to charge
+const float MINIMUM_INPUT_VOLTAGE = 10.0;   // minimal input voltage required to attempt to charge
 const float MAXIMUM_BATTERY_VOLTAGE = 14.5; // stop charging when this output voltage is attained
 const float MINIMUM_VOLTAGE_DIFFERENCE = 4.0;// minumum voltage difference between input and output
 const float CURRENT_SCALE = 14.0;           // output current to voltage convertion rate 66mv/a for ACS712 30A
-const float INPUT_VOLTAGE_SCALE = 10.2;     // resistor divider for measuring input voltage relative to +5v
-const float OUTPUT_VOLTAGE_SCALE = 4.95;    // resistor divider for measuring output voltage relative to +5v
+const float INPUT_VOLTAGE_SCALE_ONE = 10.25;     // resistor divider for measuring input voltage relative to +5v
+const float INPUT_VOLTAGE_SCALE_TWO = 10.75;     // resistor divider for measuring input voltage relative to +5v
+
+const float OUTPUT_VOLTAGE_SCALE = 4.97;    // resistor divider for measuring output voltage relative to +5v
 const float MAX_CURRENT = 20.0;             // total charge controller or battery sink current capacity
 const float MIN_CURRENT = 0.2;              // 1% of max output current
 
@@ -61,7 +63,11 @@ void setup() {
 
 float measureinputVoltage(int voltageSense){
   int voltReading = analogRead(voltageSense);
-  return 5 * INPUT_VOLTAGE_SCALE * (voltReading+1) / 1024.0;
+  if(voltageSense == INPUT_VOLTAGE_SENSE_ONE){
+    return 5 * INPUT_VOLTAGE_SCALE_ONE * (voltReading+1) / 1024.0;
+  }else{
+    return 5 * INPUT_VOLTAGE_SCALE_TWO * (voltReading+1) / 1024.0;
+  }
 }
 
 float measureOutputVoltage(){
@@ -127,7 +133,7 @@ void sendMeasurementValues(
 
 void displayVoltage(float voltage, int offset){
   lcd.setCursor(offset, 0);
-  lcd.print(roundAndAdjust(voltage, "V", 2));
+  lcd.print(roundAndAdjust(voltage, "V", 3));
 }
 
 void displayPower(float outputPower, int offset){
@@ -156,12 +162,12 @@ void displayMeasurements(
   lcd.print(F("               "));
   displayVoltage(inputVoltageOne, 0);
   displayVoltage(inputVoltageTwo, 5);
-  displayVoltage(outputVoltage, 10);
+  displayVoltage(outputVoltage, 11);
   lcd.setCursor(0, 1);
   lcd.print(F("               "));
   displayCurrent(outputCurrentOne, 0);
   displayCurrent(outputCurrentTwo, 5);
-  displayCurrent((outputCurrentOne + outputCurrentTwo), 10);
+  displayCurrent((outputCurrentOne + outputCurrentTwo), 11);
 }
 
 long manageBacklight(){
