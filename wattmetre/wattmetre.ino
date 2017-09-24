@@ -30,8 +30,8 @@
 #define LONG_WAIT_TIME   90000 // wait time for main loop when not isCurrentlyCharging
 
 const float MINIMUM_INPUT_VOLTAGE = 10.0;   // minimal input voltage required to attempt to charge
-const float MAXIMUM_BATTERY_VOLTAGE = 14.5; // stop charging when this output voltage is attained
-const float MINIMUM_VOLTAGE_DIFFERENCE = 4.0;// minumum voltage difference between input and output
+const float MAXIMUM_BATTERY_VOLTAGE = 14.0; // stop charging when this output voltage is attained
+const float MINIMUM_VOLTAGE_DIFFERENCE = 3.5;// minimum voltage difference between input and output
 const float CURRENT_SCALE = 14.0;           // output current to voltage convertion rate 66mv/a for ACS712 30A
 const float INPUT_VOLTAGE_SCALE_ONE = 10.25;     // resistor divider for measuring input voltage relative to +5v
 const float INPUT_VOLTAGE_SCALE_TWO = 10.75;     // resistor divider for measuring input voltage relative to +5v
@@ -143,7 +143,7 @@ void displayPower(float outputPower, int offset){
 
 void displayCurrent(float outputCurrent, int offset){
   lcd.setCursor(offset, 1);
-  lcd.print(roundAndAdjust(outputCurrent, "A", 1));
+  lcd.print(roundAndAdjust(outputCurrent, "A", 2));
 }
 
 void displayMeasurements(
